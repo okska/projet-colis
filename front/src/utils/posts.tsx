@@ -7,9 +7,11 @@ export type PostType = {
   body: string
 }
 
+const apiUrl = import.meta.env.VITE_API_URL;
+
 export const fetchPost = async (postId: string) => {
   console.info(`Fetching post with id ${postId} from Hono backend...`)
-  const res = await fetch(`http://localhost:3000/api/posts/${postId}`)
+  const res = await fetch(`${apiUrl}/api/posts/${postId}`)
   if (!res.ok) {
     if (res.status === 404) {
       throw notFound()
@@ -25,7 +27,7 @@ export const fetchPost = async (postId: string) => {
 
 export const fetchPosts = async () => {
   console.info('Fetching posts from Hono backend...')
-  const res = await fetch('http://localhost:3000/api/posts')
+  const res = await fetch(`${apiUrl}/api/posts`)
   if (!res.ok) {
     throw new Error('Failed to fetch posts')
   }
