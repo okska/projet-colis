@@ -6,6 +6,8 @@ import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import { posts2 } from './db/schema' // Import the Drizzle schema
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -26,6 +28,9 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
   port: parseInt(process.env.DB_PORT || "5432"),
 })
+
+// Initialize Drizzle ORM
+const db = drizzle(pool, { schema: { posts2 } });
 
 const app = new Hono()
 
@@ -70,6 +75,17 @@ app.get('/api/posts/:id', async (c) => {
     return c.json({ error: 'Failed to fetch post from database' }, 500)
   }
 })
+
+// New endpoint using Drizzle ORM
+app.get('/api/posts2', async (c) => {
+  try {
+    const allPosts2 = await db.query.posts2.findMany();
+    return c.json(allPosts2);
+  } catch (err) {
+    console.error(err);
+    return c.json({ error: 'Failed to fetch posts2 from database using Drizzle' }, 500);
+  }
+});
 
 serve({
   fetch: app.fetch,
