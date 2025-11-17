@@ -7,7 +7,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { posts2 } from './db/schema' // Import the Drizzle schema
+import { posts2 } from './db/schema.js' // Import the Drizzle schema
+import { auth } from './lib/auth.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -34,9 +35,25 @@ const db = drizzle(pool, { schema: { posts2 } });
 
 const app = new Hono()
 
-app.use('/api/*', cors({
+const corsConfig = {
   origin: 'http://localhost:3001',
-}))
+  credentials: true,
+  allowHeaders: ['Content-Type', 'Authorization'],
+  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  exposeHeaders: ['Set-Cookie'],
+}
+
+const corsMiddleware = cors(corsConfig)
+
+app.use('/api/*', corsMiddleware)
+
+app.options('/api/auth/*', (c) => {
+  return corsMiddleware(c, async () => {})
+})
+
+app.on(['POST', 'GET'], '/api/auth/*', (c) => {
+  return auth.handler(c.req.raw)
+})
 
 app.get('/', (c) => {
   return c.text('Hello Hono!')
