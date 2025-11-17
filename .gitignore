@@ -1,34 +1,70 @@
 # Dependencies
 /node_modules
-/front/node_modules
-/backend/japp/node_modules
+/.pnpm-store
+/pnpm-lock.yaml
 
-# Environment variables
-.env
-.env.*
-!.env.example
+# Docusaurus
+/.docusaurus
+/build
 
-# Build output
+# Next
+/.next/
+/out/
+
+# Remix
+/build/
+/public/build/
+
+# Gatsby
+/public
+/.cache
+.cache-loader
+
+# Nuxt
+/.nuxt
 /dist
-/front/dist
-/backend/japp/dist
+
+# Svelte
+/.svelte-kit
+/build
+
+# Angular
+/dist
+/tmp
+
+# Vue
+/dist
+
+# Vite
+/dist
+
+# TypeScript
+*.tsbuildinfo
+
+# IDEs
+.idea/
+.vscode/
+
+# Tanstack Query
+.tanstack/
+
+# Generated files
+routeTree.gen.ts
 
 # Logs
+logs
 *.log
 npm-debug.log*
-pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# IDE / Editor specific
-.vscode/
-.idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# OS generated files
+# OS
 .DS_Store
 Thumbs.db
+
+# Env
+.env
+#.env*.local
+#!.env.example
