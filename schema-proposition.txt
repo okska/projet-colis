@@ -1,0 +1,121 @@
+Proposition de schéma relationnel pour la nouvelle application colis
+===================================================================
+
+Contexte rapide
+---------------
+- Les utilisateurs sont stockés dans `auth.users` (ou une table équivalente côté page d'auth). Toutes les tables applicatives référencent cette source unique via la colonne `user_id`.
+- Les expéditeurs publient des listings, les drivers candidatent, l'expéditeur en choisit un, et le listing suit un cycle de vie (publication -> affectation -> livraison -> clôture / litige / archivage).
+- Les migrations historiques (dossier `old_project/.../supabase/migrations`) ne géraient ni l'historique des états, ni la gestion fine des candidatures, d'où la proposition suivante pour couvrir les besoins actuels et futurs sans sur-complexifier.
+
+Enums / types de base (dans le schema `app`)
+-------------------------------------------
+1. `app.listing_status`
+   - `draft`, `published`, `assigned`, `ready_for_pickup`, `in_transit`, `delivered`, `cancelled`, `disputed`, `archived`.
+   - Le listing reste `published` tant qu'il n'est pas assigné, même si l'expéditeur examine les candidatures. L'ordre de vie reste clair et il est facile d'ajouter des transitions futures sans toucher les tables.
+
+2. `app.delivery_request_status`
+   - `pending`, `accepted`, `declined`, `withdrawn`, `expired`, `cancelled_by_sender`.
+   - Sert à suivre la vie d'une candidature de driver.
+
+3. `app.driver_profile_status`
+   - `pending_verification`, `active`, `suspended`, `blocked`.
+   - Facilite la désactivation temporaire d'un driver sans supprimer son compte.
+
+Tables principales
+------------------
+1. `app.user_profiles`
+   - `user_id uuid PK` → FK `auth.users(id)`.
+   - `display_name`, `phone_number`, `default_pickup_address`, `default_delivery_address`, `avatar_url`, `preferred_language`.
+   - `bio_sender text`, `bio_driver text` pour séparer les présentations selon le rôle (un utilisateur peut être expéditeur et driver).
+   - Table légère qui permet de stocker des informations communes et de découpler l'app de la structure des métadonnées Supabase/Auth.
+
+2. `app.driver_profiles`
+   - `user_id uuid PK` → FK `auth.users(id)`.
+   - `profile_status app.driver_profile_status` (default `pending_verification`).
+   - `vehicle_type`, `max_weight_kg`, `max_length_cm`, `years_of_experience`, `documents jsonb` (permis, pièce d'identité, assurances).
+   - `rating_average numeric`, `rating_count integer`, `last_connection_at timestamptz` (champ privé côté driver), `activated_at`, `suspended_at`.
+   - Permet de savoir si un utilisateur est éligible pour candidater et offre de la place pour l'onboarding futur (vérifications, documents, préférences de tournée).
+
+3. `app.listings`
+   - `id uuid PK default gen_random_uuid()`.
+   - `expediteur_id uuid not null` → FK `auth.users(id)`.
+   - `title`, `short_description`, `long_description`.
+   - `status app.listing_status default 'draft'`.
+   - `parcel_details jsonb` structuré : imposer une fonction `CHECK (parcel_details ?& array['weight_kg','length_cm','width_cm','height_cm'])` + des validations via `jsonb_schema` (extension) ou `jsonb_path_query` pour garantir que les champs obligatoires existent et sont de types cohérents.
+   - `pickup_address`, `pickup_lat numeric`, `pickup_lng numeric`, `pickup_window tstzrange`.
+   - `delivery_address`, `delivery_lat numeric`, `delivery_lng numeric`, `delivery_window tstzrange`.
+   - `budget numeric(10,2)`, `currency char(3)`, `payment_status` (simple enum `unpaid`, `reserved`, `released`).
+    - `accepted_request_id uuid null` → FK `app.listing_delivery_requests(id)` pour pointer vers la candidature choisie.
+    - `current_driver_id uuid null` → FK `auth.users(id)` (copie pour les jointures rapides une fois la candidature acceptée).
+   - `published_at`, `assigned_at`, `picked_up_at`, `delivered_at`, `cancelled_at`, `archived_at`.
+   - `created_at`, `updated_at` timestamps.
+   - Indexation :
+     * (`status`, `pickup_window`) pour récupérer rapidement les listings publiés dans une fenêtre temporelle (recherche publique).
+     * (`expediteur_id`, `created_at`) pour lister efficacement les listings d'un utilisateur dans l'ordre chronologique.
+     * (`current_driver_id`, `status`) pour alimenter le tableau de bord driver.
+
+4. `app.listing_media`
+   - `id bigint PK identity`.
+   - `listing_id uuid` → FK `app.listings(id)`.
+   - `storage_path text`, `media_type text`, `sort_order int`, `metadata jsonb`.
+   - Optionnel mais garde les images/vidéos séparées de la table principale.
+
+5. `app.listing_delivery_requests`
+   - `id uuid PK default gen_random_uuid()`.
+   - `listing_id uuid not null` → FK `app.listings(id)`.
+   - `driver_id uuid not null` → FK `auth.users(id)` (doit exister dans `app.driver_profiles` et y être `active`).
+   - `status app.delivery_request_status default 'pending'`.
+   - `message text`, `proposed_price numeric(10,2)`, `estimated_pickup_time timestamptz`, `vehicle_notes text`.
+   - `decision_by_sender_at timestamptz`, `decision_reason text`.
+   - `withdrawn_at`, `expired_at` pour tracer les abandons.
+   - Contrainte UNIQUE `(listing_id, driver_id)` pour éviter les doublons (un seul essai par driver).
+   - Index `(driver_id, status)` pour que le driver retrouve rapidement ses demandes; `(listing_id, status)` pour que l'expéditeur voie les candidatures en attente.
+
+6. `app.listing_status_history`
+   - `id bigint PK identity`.
+   - `listing_id uuid not null`.
+   - `previous_status app.listing_status`, `new_status app.listing_status`.
+   - `changed_by uuid` → FK `auth.users(id)` (expéditeur, driver ou admin).
+   - `changed_at timestamptz default now()`, `notes text`.
+   - Permet l'audit et la reconstruction des timelines (utile en cas de litige ou pour les statistiques).
+
+7. `app.delivery_reviews` (optionnel mais prêt pour l'étape suivante)
+   - `id bigint PK identity`.
+   - `listing_id uuid` (une fois livré).
+   - `reviewer_id uuid`, `reviewed_id uuid`, `role text ('expediteur' ou 'driver')`.
+   - `rating smallint check between 1 et 5`, `comment text`, `created_at`.
+   - Ce module n'impacte pas le cœur actuel mais structure déjà les feedbacks.
+
+8. `app.listing_watchers` (facultatif, utile si beaucoup de trafic)
+   - `listing_id uuid`, `user_id uuid`, timestamps.
+   - Peut permettre d'envoyer des notifications aux drivers lorsqu'un listing correspondant à leurs préférences arrive.
+
+Flux principal basé sur ce schéma
+--------------------------------
+1. Un expéditeur (profil standard) crée un listing → `status = draft`. Tant que le brouillon n'est pas publié, aucune candidature n'est possible.
+2. Publication (`status = published`) : les drivers actifs peuvent lire le listing et créer une ligne dans `app.listing_delivery_requests` (`status = pending`).
+3. L'expéditeur ouvre la page "drivers en attente" : il filtre sur `delivery_requests` où `status = pending` pour son `listing_id`.
+4. Lorsqu'il accepte un driver :
+   - La ligne `delivery_requests` passe à `accepted` et `listings.accepted_request_id` + `current_driver_id` sont remplis.
+   - Le listing passe à `assigned` puis évolue selon les actions terrain; on journalise tout dans `listing_status_history`.
+   - Toutes les autres demandes actives pour le même listing peuvent automatiquement être marquées `declined`.
+5. Pendant la livraison, seuls les listings ayant `current_driver_id` = driver connecté ET `status` ∈ (`assigned`, `ready_for_pickup`, `in_transit`) sont visibles côté driver.
+6. Lorsque le driver signale le retrait ou la remise, le statut évolue (`assigned` → `ready_for_pickup` → `in_transit` → `delivered`). Chaque changement est historisé.
+7. En cas de litige, le listing passe en `disputed` et on garde l'historique pour éventuelle médiation.
+
+Champs additionnels / bonnes pratiques
+-------------------------------------
+- Penser à ajouter `soft delete` (`deleted_at`) sur les tables critiques si vous voulez pouvoir restaurer des données.
+- Utiliser `tstzrange` pour les fenêtres de disponibilité évite de multiplier les colonnes `start` / `end` et facilite les requêtes "listings disponibles cette semaine".
+- Préparer des vues matérialisées (ou simples vues) pour les écrans récurrents, ex: `app.v_listings_publiques` qui joint `listings`, `user_profiles`, `driver_profiles` pour réduire la logique côté front.
+- Les contraintes RLS :
+  * `listings`: SELECT public, INSERT limité à `auth.uid() = expediteur_id`, UPDATE limité à l'auteur sauf colonnes métiers que seul le driver doit toucher (utiliser des policies avec `USING (... OR role = 'admin')`).
+  * `listing_delivery_requests`: SELECT pour le propriétaire de la demande ou le propriétaire du listing, INSERT autorisé seulement aux utilisateurs ayant un `driver_profiles` actif.
+- Les colonnes `metadata jsonb` peuvent stocker temporairement des champs spécifiques à un partenaire sans changer la structure principale.
+- Une table `app.notifications_queue` pourra être ajoutée plus tard sans impacter le modèle actuel, car les clés primaires sont stables et toutes en `uuid`/`bigint`.
+
+Ce schéma offre
+---------------
+- Des jointures simples (listing → expéditeur, listing → driver accepté, listing → demandes) et des contraintes explicites pour éviter les états incohérents.
+- Une base suffisamment détaillée pour ajouter la facturation, les litiges, les revues ou un moteur de matching plus tard, sans avoir à casser les tables actuelles.
+- Un historique d'état natif pour auditer rapidement les anomalies.

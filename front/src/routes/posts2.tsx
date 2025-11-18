@@ -5,8 +5,9 @@ export const Route = createFileRoute('/posts2')({
   component: Posts2Component,
 })
 
+const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+
 async function fetchPosts2() {
-  const apiUrl = import.meta.env.VITE_API_URL;
   console.info('Fetching posts2 from Hono backend using Drizzle...');
   const res = await fetch(`${apiUrl}/api/posts2`);
   if (!res.ok) {
