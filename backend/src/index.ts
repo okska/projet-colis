@@ -13,7 +13,7 @@ import { auth } from './lib/auth.js'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-const envPath = path.resolve(__dirname, '../../../.env');
+const envPath = path.resolve(__dirname, '../../.env');
 console.log('Loading .env from:', envPath);
 dotenv.config({ path: envPath });
 

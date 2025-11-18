@@ -32,9 +32,9 @@ Before you begin, ensure you have the following installed:
 
 4.  **Install backend dependencies:**
     ```bash
-    cd backend/japp
+    cd backend
     pnpm install
-    cd ../..
+    cd ..
     ```
 
 5.  **Install frontend dependencies:**
@@ -50,7 +50,7 @@ You need to run the backend and frontend in separate terminals.
 
 1.  **Run the backend:**
     ```bash
-    cd backend/japp
+    cd backend
     pnpm run dev
     ```
     The Hono backend will be running at `http://localhost:3000`.
