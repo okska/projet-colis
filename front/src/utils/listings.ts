@@ -25,6 +25,9 @@ export type ListingSummary = {
   currency?: string
   pickupWindow?: { start: string; end: string }
   createdAt: string
+  ownerId?: string
+  viewerHasRequested?: boolean
+  deliveryRequestCount?: number
 }
 
 const sampleListings: ListingSummary[] = [
@@ -42,6 +45,7 @@ const sampleListings: ListingSummary[] = [
       end: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
     },
     createdAt: new Date().toISOString(),
+    ownerId: 'demo-expediteur',
   },
   {
     id: 'demo-2',
@@ -57,6 +61,7 @@ const sampleListings: ListingSummary[] = [
       end: new Date(Date.now() + 27 * 60 * 60 * 1000).toISOString(),
     },
     createdAt: new Date().toISOString(),
+    ownerId: 'demo-expediteur-2',
   },
 ]
 
@@ -104,6 +109,186 @@ export async function fetchPublicListings(): Promise<ListingSummary[]> {
       error,
     )
     return sampleListings
+  }
+}
+
+export async function requestListingDelivery(listingId: string) {
+  const response = await fetch(
+    `${apiUrl}/api/listings/${listingId}/request-delivery`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    },
+  )
+
+  return handleDeliveryResponse(response)
+}
+
+export async function cancelListingDelivery(listingId: string) {
+  const response = await fetch(
+    `${apiUrl}/api/listings/${listingId}/request-delivery`,
+    {
+      method: 'DELETE',
+      credentials: 'include',
+    },
+  )
+
+  return handleDeliveryResponse(response)
+}
+
+export type ListingDeliveryRequest = {
+  id: string
+  driverId: string
+  driverName?: string | null
+  driverEmail?: string | null
+  status: string
+  createdAt: string
+}
+
+export type DriverAssignment = {
+  id: string
+  listingId: string
+  status: string
+  createdAt: string
+  listingTitle: string
+  pickupAddress?: string | null
+  deliveryAddress?: string | null
+}
+
+export async function fetchDriverDeliveryRequests(options?: {
+  cookie?: string
+}): Promise<string[]> {
+  const headers: HeadersInit | undefined = options?.cookie
+    ? { cookie: options.cookie }
+    : undefined
+
+  const response = await fetch(`${apiUrl}/api/listings/delivery-requests`, {
+    credentials: 'include',
+    headers,
+  })
+
+  if (!response.ok) {
+    throw new Error('Impossible de récupérer vos demandes de livraison.')
+  }
+
+  const data = (await response.json()) as { listingIds: string[] }
+  return data.listingIds
+}
+
+export async function fetchListingRequests(listingId: string) {
+  const response = await fetch(
+    `${apiUrl}/api/listings/${listingId}/delivery-requests`,
+    {
+      credentials: 'include',
+    },
+  )
+
+  const parsed = await tryParseJson(response)
+
+  if (response.status === 401) {
+    throw new Error('Veuillez vous connecter pour voir les offres.')
+  }
+
+  if (response.status === 403) {
+    throw new Error('Seul le propriétaire du listing peut voir les offres.')
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof parsed?.error === 'string'
+        ? parsed.error
+        : 'Impossible de récupérer les offres des livreurs.'
+    throw new Error(message)
+  }
+
+  return (parsed ?? []) as ListingDeliveryRequest[]
+}
+
+export async function acceptListingRequest(listingId: string, requestId: string) {
+  const response = await fetch(
+    `${apiUrl}/api/listings/${listingId}/delivery-requests/${requestId}/accept`,
+    {
+      method: 'POST',
+      credentials: 'include',
+    },
+  )
+
+  const parsed = await tryParseJson(response)
+
+  if (response.status === 401) {
+    throw new Error('Veuillez vous connecter pour effectuer cette action.')
+  }
+
+  if (response.status === 403) {
+    throw new Error('Seul le propriétaire du listing peut accepter une offre.')
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof parsed?.error === 'string'
+        ? parsed.error
+        : 'Impossible d’accepter cette offre.'
+    throw new Error(message)
+  }
+
+  return parsed ?? { message: 'Demande acceptée.' }
+}
+
+export async function fetchDriverAssignments(options?: {
+  cookie?: string
+}): Promise<DriverAssignment[]> {
+  const headers: HeadersInit | undefined = options?.cookie
+    ? { cookie: options.cookie }
+    : undefined
+
+  const response = await fetch(`${apiUrl}/api/driver/delivery-requests`, {
+    credentials: 'include',
+    headers,
+  })
+
+  if (response.status === 401) {
+    throw new Error('Veuillez vous connecter pour accéder à vos livraisons.')
+  }
+
+  if (response.status === 403) {
+    throw new Error('Profil livreur requis pour consulter cette page.')
+  }
+
+  if (!response.ok) {
+    throw new Error('Impossible de récupérer vos livraisons.')
+  }
+
+  return (await response.json()) as DriverAssignment[]
+}
+
+async function handleDeliveryResponse(response: Response) {
+  const parsed = await tryParseJson(response)
+
+  if (response.status === 401) {
+    throw new Error('Veuillez vous connecter pour effectuer cette action.')
+  }
+
+  if (response.status === 403) {
+    throw new Error('Seuls les livreurs peuvent effectuer cette action.')
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof parsed?.error === 'string'
+        ? parsed.error
+        : 'Impossible de soumettre la demande pour le moment.'
+    throw new Error(message)
+  }
+
+  return parsed ?? { message: 'Action réalisée.' }
+}
+
+async function tryParseJson(response: Response) {
+  try {
+    return await response.clone().json()
+  } catch {
+    return undefined
   }
 }
 

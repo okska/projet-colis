@@ -1,14 +1,14 @@
 import { createMiddleware, createStart } from '@tanstack/react-start'
 import type { AppRouterContext } from './router'
 
-const attachRequestMiddleware = createMiddleware<{ context: AppRouterContext }>(
-  { type: 'request' },
-).server(async (ctx) => {
-  return ctx.next({
+const attachRequestMiddleware = createMiddleware({ type: 'request' }).server<
+  AppRouterContext
+>(async ({ next, request, context }) => {
+  return next({
     context: {
-      ...ctx.context,
+      ...(context ?? {}),
       serverContext: {
-        request: ctx.request,
+        request,
       },
     },
   })

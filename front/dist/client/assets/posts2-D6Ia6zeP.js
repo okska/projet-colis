@@ -1,0 +1,1 @@
+import{a as t,j as s}from"./main-CYDXynsJ.js";function o(){const i=t.useLoaderData();return s.jsxs("div",{className:"p-2",children:[s.jsx("h3",{children:"Posts from Drizzle ORM"}),s.jsx("ul",{className:"list-disc pl-4",children:i.map(e=>s.jsx("li",{className:"whitespace-nowrap",children:s.jsx("div",{children:e.title})},e.id))})]})}export{o as component};
