@@ -123,7 +123,7 @@ export const paymentStatusEnum = app.enum('payment_status', ['unpaid', 'reserved
 
 export const reviewRoleEnum = app.enum('review_role', ['expediteur', 'driver']);
 
-const tstzRange = customType<{ data: unknown }>({
+const tstzRange = customType<{ data: string | null }>({
   dataType() {
     return 'tstzrange';
   },

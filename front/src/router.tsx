@@ -3,6 +3,12 @@ import { routeTree } from './routeTree.gen'
 import { DefaultCatchBoundary } from './components/DefaultCatchBoundary'
 import { NotFound } from './components/NotFound'
 
+export type AppRouterContext = {
+  serverContext?: {
+    request: Request
+  }
+}
+
 export function getRouter() {
   const router = createRouter({
     routeTree,
@@ -10,6 +16,9 @@ export function getRouter() {
     defaultErrorComponent: DefaultCatchBoundary,
     defaultNotFoundComponent: () => <NotFound />,
     scrollRestoration: true,
+    context: {
+      serverContext: undefined,
+    } satisfies AppRouterContext,
   })
   return router
 }
